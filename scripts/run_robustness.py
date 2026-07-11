@@ -92,6 +92,12 @@ def main() -> None:
     result.rows.to_csv(outdir / "robustness_rows.csv", index=False)
     result.summary.to_csv(outdir / "robustness_summary.csv", index=False)
     gl.to_csv(outdir / "gain_vs_load.csv", index=False)
+    # persist U(m) curves so the figure can be regenerated without a re-run
+    uc = pd.DataFrame({"m": result.mults})
+    for name, curve in result.util_curves.items():
+        if len(curve):
+            uc[name] = curve
+    uc.to_csv(outdir / "util_curves.csv", index=False)
 
     s = result.summary.set_index("scheduler")
     order = ["RoundRobin+Floors", "MaxCQI+Floors", "ProportionalFair+Floors", "GTMD-noPay", "GTMD-RL"]

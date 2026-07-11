@@ -57,14 +57,17 @@ venv_linux/bin/python scripts/run_deep_rl.py       # -> outputs/deep_rl/deep_rl_
 #    robustness_epochs.png, responsiveness_vs_strategyproofness.png, scheduler_perslice.png
 venv_linux/bin/python scripts/run_robustness.py    # -> outputs/robustness/
 
-# GTMD-RL vs Round-Robin / Max-CQI / Proportional-Fair
-venv_linux/bin/python scripts/run_scheduler_comparison.py --output-dir outputs/scheduler_comparison_final
+# GTMD-RL vs Round-Robin / Max-CQI / Proportional-Fair (deployed scheduler is now
+# M-LWDF-style: deadline + channel aware, full-floor burst buffer for tight-SLA slice)
+venv_linux/bin/python scripts/run_scheduler_comparison.py --output-dir outputs/scheduler_comparison_v5
 ```
 
-Key result: under overload GTMD-RL gives the **lowest URLLC tail latency (3.5 ms vs
-500 ms for max-CQI/PF)** and **lowest SLA-violation rate**, guarantees floors 100%,
-and is the **only DSIC (truthful)** policy. The floors-always-on (ρ=1) baseline is
-measurably worse — the single-lever barrier showing up empirically.
+Key result: GTMD-RL has the **lowest URLLC tail latency (0.63 ms at load 1.0, 1.90 ms
+at 1.3 — vs ≥3.9 ms for every floor-guaranteeing baseline) and the lowest URLLC
+SLA-violation rate at both loads**, the best priority-weighted SLA at moderate load,
+guarantees floors 100%, and is the **only DSIC (truthful)** policy. The improvement is
+in the *deployed* path (`serve_backlog=True`) only; the priced DSIC path and the
+frontier/robustness results are unaffected.
 
 ## 3. Python ⇄ ns-3 5G-LENA socket bridge (`bridge/`)
 

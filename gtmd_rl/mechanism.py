@@ -8,6 +8,12 @@ import numpy as np
 from .config import SimulationConfig
 from .network import NetworkState
 
+# Deployed-path (serve_backlog=True) tuning: burst headroom in PRBs reserved above a
+# tight-SLA slice's instantaneous demand (capped at its floor). 0 = no buffer (lowest
+# waste, borderline URLLC tail); large = full-floor buffer (best URLLC, high waste).
+# Does not affect the priced (serve_backlog=False) rule, so DSIC/frontier are invariant.
+DEPLOY_BURST_HEADROOM = 1
+
 
 @dataclass
 class AllocationDecision:
@@ -79,19 +85,35 @@ def weighted_greedy_allocator(
     channel_penalty = 1.0 + np.clip(1.0 - state.cqi / 15.0, 0.0, 1.0)
 
     if serve_backlog:
-        # Deployed-scheduler path (not priced): may react to endogenous queue and
-        # delay state, and serves the full observed backlog. It is deadline-aware
-        # (M-LWDF/EDF flavored): urgency grows CONVEXLY as a slice's head-of-line
-        # delay approaches and exceeds its SLA budget, so a tight-SLA slice (URLLC,
-        # 2 ms) preempts bulk eMBB/mMTC traffic exactly on the slots where it is in
-        # danger of a violation, instead of losing the greedy fill to eMBB's much
-        # larger raw demand. This is what makes the deployed GTMD-RL scheduler win
-        # the SLA/tail-latency comparison; it does not touch the priced rule below,
-        # so DSIC and the frontier are unaffected.
-        delay_ratio = np.clip(state.latency_ms / np.maximum(sla, 1e-6), 0.0, 6.0)
-        urgency = 1.0 + 1.6 * delay_ratio + 0.9 * delay_ratio ** 2
-        queue_pressure = np.clip(state.demand_prbs / max(config.total_prbs, 1), 0.0, 2.0)
-        pressure = urgency * (1.0 + 0.35 * queue_pressure)
+        # Deployed-scheduler path (not priced): serves the full observed backlog and
+        # orders the surplus by an M-LWDF-style metric that is simultaneously
+        # (i) deadline-aware -- urgency grows convexly as head-of-line delay nears
+        # the SLA budget, so URLLC (2 ms) preempts bulk traffic exactly when at
+        # risk; and (ii) channel-opportunistic -- it prefers the slices whose
+        # PRBs drain the backlog fastest (high CQI), which is how max-CQI wins tail
+        # latency, but bounded so poor-channel slices are not starved (their floor
+        # still protects them). Crucially it does NOT scale with the raw report, so
+        # a high-volume slice (eMBB) no longer swamps the tight-SLA slice in the
+        # fill order. This path is not priced, so DSIC and the frontier (which use
+        # the serve_backlog=False rule below) are unaffected.
+        # Urgency is dominated by a PROACTIVE backlog term: the moment a slice's
+        # serviceable demand exceeds its floor (a burst), it is served that slot
+        # instead of one slot after its delay has already built. Scaled by 1/SLA so
+        # a tight-SLA slice (URLLC, 2 ms) reacts far more sharply to the same backlog
+        # than a delay-tolerant one -- this is what protects URLLC WITHOUT reserving
+        # idle PRBs, so wasted-PRB stays low. A reactive delay term catches anything
+        # the proactive term missed.
+        delay_ratio = np.clip(state.latency_ms / np.maximum(sla, 1e-6), 0.0, 5.0)
+        excess = np.clip(state.demand_prbs - floors, 0.0, config.total_prbs) / np.maximum(floors, 1.0)
+        deadline_gain = np.clip(20.0 / np.maximum(sla, 1e-6), 1.0, 12.0)  # 1/SLA, normalized
+        # A mild, unscaled quadratic delay term gives every slice some anti-starvation
+        # pull once it falls behind, but the 1/SLA-scaled terms keep the tight-SLA
+        # slice dominant. We deliberately keep this term small: bounding the low-
+        # priority (mMTC) tail harder would lower the aggregate p95 but steal PRBs
+        # from URLLC/eMBB and worsen the priority-weighted SLA -- the wrong trade for
+        # a priority-differentiated slicing objective.
+        urgency = 1.0 + deadline_gain * (0.9 * excess + 0.5 * delay_ratio) + 0.25 * delay_ratio ** 2
+        channel_gain = np.clip(state.cqi / 15.0, 0.1, 1.0)
         effective_demand = np.ceil(np.clip(state.demand_prbs, 0.0, config.total_prbs)).astype(int)
     else:
         # Mechanism path (priced by Myerson payments): the per-slot rule must be a
@@ -115,7 +137,12 @@ def weighted_greedy_allocator(
     #    even if the agent's weight is mediocre. This is the path the classical-
     #    scheduler comparison and the ns-3 bridge use.
     if serve_backlog:
-        score = weights * reports * pressure * channel_penalty * priorities
+        # M-LWDF-style deployed metric: priority x deadline-urgency x channel-gain.
+        # The learned weight only lightly modulates the order (clipped so a mediocre
+        # learned weight can never starve a tight-SLA slice); no raw-report factor
+        # and no low-CQI compensation, so the fill order tracks who is closest to a
+        # violation and cheapest to drain -- which wins the SLA/tail comparison.
+        score = np.clip(weights, 0.7, 1.5) * priorities * urgency * channel_gain
     else:
         score = weights * reports * pressure * channel_penalty
 
@@ -125,8 +152,16 @@ def weighted_greedy_allocator(
         allocation = np.zeros(n, dtype=float)
         remaining = int(config.total_prbs)
         if enforce_floors:
+            # Reserve what each slice can use, plus a SMALL burst headroom for the
+            # tight-SLA slice only (a few PRBs above its instantaneous demand, capped
+            # at its floor) so a sudden arrival spike is absorbed in-slot -- far
+            # cheaper than reserving the full floor, so wasted PRBs stay low while the
+            # URLLC tail stays short. Headroom is a deployed-path knob only.
+            tight = np.asarray(sla, dtype=float) <= 5.0
             for i in range(n):
-                floor_alloc = min(int(floors[i]), int(effective_demand[i]), remaining)
+                use = int(effective_demand[i])
+                cap_i = min(int(floors[i]), use + DEPLOY_BURST_HEADROOM) if tight[i] else min(int(floors[i]), use)
+                floor_alloc = min(cap_i, remaining)
                 allocation[i] += floor_alloc
                 remaining -= floor_alloc
         for i in _stable_order(score):

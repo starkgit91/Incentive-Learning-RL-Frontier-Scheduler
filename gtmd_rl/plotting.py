@@ -235,20 +235,37 @@ def plot_robustness(result, gain_load_df, output_dir: Path) -> Path:
     order = ["RoundRobin+Floors", "MaxCQI+Floors", "ProportionalFair+Floors", "GTMD-noPay", "GTMD-RL"]
     order = [n for n in order if n in result.schedulers]
 
-    # (a) utility vs multiplier
+    # (a) utility vs multiplier. The DSIC signature is a curve that PEAKS at the
+    # truthful m=1: any misreport lowers the tenant's own utility (a downward slope
+    # away from m=1 is the guarantee working, not the mechanism degrading). The
+    # unpriced allocator instead keeps rising -- lying pays.
     m = result.mults
     for n in order:
         c = result.util_curves.get(n)
         if c is None or len(c) == 0:
             continue
         ax_u.plot(m, c, marker=_ROBUST_MARK.get(n, "o"), color=_ROBUST_COLORS.get(n, "C7"),
-                  lw=2 if n == "GTMD-RL" else 1.5, label=_SHORT.get(n, n).replace("\n", " "))
+                  lw=2.4 if n == "GTMD-RL" else 1.5, zorder=4 if n == "GTMD-RL" else 2,
+                  label=_SHORT.get(n, n).replace("\n", " "))
     ax_u.axvline(1.0, ls=":", color="grey", lw=1.2)
-    ax_u.annotate("truthful", (1.0, ax_u.get_ylim()[0]), fontsize=8, ha="center", va="bottom", color="grey")
+    # Mark the truthful optimum on our curve and say what the slope means.
+    rl = result.util_curves.get("GTMD-RL")
+    if rl is not None and len(rl):
+        i1 = int(np.argmin(np.abs(np.asarray(m) - 1.0)))
+        ax_u.scatter([m[i1]], [rl[i1]], s=190, marker="*", color="C3",
+                     edgecolor="black", linewidth=0.8, zorder=6)
+        ax_u.annotate("truthful = tenant's optimum\n(dominant strategy)",
+                      (m[i1], rl[i1]), xytext=(0.35, 0.60), textcoords="axes fraction",
+                      fontsize=7.5, color="C3", ha="left",
+                      arrowprops=dict(arrowstyle="->", color="C3", lw=1.2))
+        ax_u.annotate("any lie $\\Rightarrow$ lower utility", (float(m[-1]), float(rl[-1])),
+                      xytext=(-4, 8), textcoords="offset points", fontsize=7, color="C3", ha="right")
+    ax_u.annotate("no payment:\nlying pays", (float(m[-1]), 1.10),
+                  fontsize=7, color="C1", ha="right")
     ax_u.set_xlabel("report multiplier $m$ (1 = truthful)")
     ax_u.set_ylabel("tenant utility (normalized, truthful=1)")
-    ax_u.set_title("(a) truthful is dominant only with the payment")
-    ax_u.grid(alpha=0.3); ax_u.legend(fontsize=7, loc="best")
+    ax_u.set_title("(a) our utility peaks at truthful; unpriced keeps rising")
+    ax_u.grid(alpha=0.3); ax_u.legend(fontsize=7, loc="lower left")
 
     # (b) gain vs load
     if gain_load_df is not None and not gain_load_df.empty:
