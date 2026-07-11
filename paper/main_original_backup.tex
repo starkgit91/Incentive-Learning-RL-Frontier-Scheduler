@@ -1,0 +1,281 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% Template version as of 6/27/2024 (IEEE). Full working draft.
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{bm}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+% ---- Theorem environments ----
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{assumption}{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+% ---- Notation macros ----
+\newcommand{\Slots}{T}
+\newcommand{\Ep}{L}
+\newcommand{\Neps}{K}
+\newcommand{\Ntn}{N}
+\newcommand{\rhobind}{\rho}
+\newcommand{\load}{\eta}
+\newcommand{\type}{\theta}
+\newcommand{\typesp}{\Theta}
+\newcommand{\alloc}{x}
+\newcommand{\allocsp}{\mathcal{X}}
+\newcommand{\wt}{w}
+\newcommand{\val}{v}
+\newcommand{\flo}{f}
+\newcommand{\bindind}{b}
+\newcommand{\Reg}{\mathrm{Reg}}
+\newcommand{\Slack}{\Delta}
+\newcommand{\Otil}{\tilde{O}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ind}{\mathbb{1}}
+\newcommand{\Wel}{\mathcal{W}}
+
+\begin{document}
+
+\title{The Incentive--Learning Frontier: Truthful Reinforcement-Learning PRB Allocation Under Hard Service Floors in O-RAN Slicing\\
+{\footnotesize \textsuperscript{}Working draft for internal review}
+\thanks{Identify applicable funding agency here. If none, delete this.}
+}
+
+\author{\IEEEauthorblockN{Prashant Mishra}
+\IEEEauthorblockA{\textit{G. S. Sanyal School of Telecommunications} \\
+\textit{Indian Institute of Technology Kharagpur}\\
+Kharagpur, India}
+\and
+\IEEEauthorblockN{Dibbendu Roy}
+\IEEEauthorblockA{\textit{G. S. Sanyal School of Telecommunications} \\
+\textit{Indian Institute of Technology Kharagpur}\\
+Kharagpur, India}
+}
+
+\maketitle
+
+\begin{abstract}
+Open RAN increasingly delegates slice-level physical resource block (PRB) allocation to learning agents in the near-real-time RIC, yet these agents assume the controller observes tenant demand directly. We study the setting in which tenants are strategic and the allocator learns from their reports, so that each report is simultaneously an incentive object and a training sample. We show that exact dominant-strategy truthfulness within a fixed-policy epoch coexists with an unavoidable episode-level incentive slack whenever hard per-slice service floors are active, and we localize that slack precisely to the slots on which a floor binds. Our main result characterizes the achievable tradeoff between cumulative learning regret and incentive slack as a frontier governed by two parameters, the epoch length and the service-floor binding frequency, and proves that the binding frequency is an exogenous quantity fixed by admission-control load rather than by the learning horizon. The combined cost is of order the cube root of the binding frequency times the two-thirds power of the horizon, which recovers the known single-lever barrier when floors always bind and is strictly smaller otherwise. We instantiate the frontier on the ns-3 5G-LENA simulator with a constrained reinforcement-learning scheduler and an adversarial misreporting tenant.
+\end{abstract}
+
+\begin{IEEEkeywords}
+O-RAN, network slicing, mechanism design, incentive compatibility, reinforcement learning, resource allocation, regret.
+\end{IEEEkeywords}
+
+\section{Introduction}\label{sec:intro}
+Open RAN (O-RAN) decomposes the radio access network into interoperable components and exposes radio resource control to applications hosted in the near-real-time RAN Intelligent Controller (RIC)~\cite{ref:oran}. Within this architecture, slice-level allocation of physical resource blocks (PRBs) is increasingly delegated to reinforcement-learning (RL) agents that observe radio and traffic key performance measurements and emit an allocation once per control interval. A growing body of work demonstrates such RL xApps for PRB and slice management~\cite{ref:coloran,ref:slicing}.
+
+This literature shares an assumption that is rarely made explicit: the controller observes tenant demand. The measurements that drive allocation (buffer occupancy, PRB utilization, throughput, delay) are taken as ground truth about how much each slice needs. In a multi-tenant deployment, however, slices belong to distinct self-interested tenants, and the only interface between a tenant and the controller is a report. Once the controller \emph{learns} its policy from these reports, each report plays two roles at once: it is the object on which incentives act, since a tenant may benefit from overstating need, and it is a training sample that shapes the policy applied in the future. To our knowledge, the interaction between strategic reporting and policy learning is absent from the O-RAN slicing literature.
+
+This coupling creates a tension that single-round mechanism design does not resolve. One can make the per-interval allocation truthful: a monotone allocation rule with the appropriate payment is dominant-strategy incentive compatible (DSIC)~\cite{ref:myerson}. But a learning policy whose parameters depend on the history of reports can be manipulated \emph{across} intervals, because a tenant who misreports early can steer the policy toward configurations that favor it later, even when each interval in isolation is truthful~\cite{ref:huh}. The natural question is quantitative: what is the exact exchange rate between how fast the controller learns and how much episode-level truthfulness it must surrender, and is that exchange rate governed by a quantity the operator can measure?
+
+We answer this for the constrained setting O-RAN imposes, in which each slice carries a hard service floor, a minimum guaranteed allocation. Our contributions are:
+\begin{itemize}
+\item \textbf{Within-epoch exact DSIC} for an epoch-frozen learning allocator with a monotone inner allocation rule (Theorem~\ref{thm:dsic}).
+\item A \textbf{constrained dynamic-IC impossibility}, with the obstruction \emph{localized} to the slots on which a service floor binds, and identically zero when no floor binds (Theorem~\ref{thm:imposs}).
+\item The \textbf{incentive--learning frontier}: learning regret $\Otil(\sqrt{\Ep\Slots})$ and manipulation slack $O(\rhobind\Slots/\Ep)$ are achieved simultaneously, and their balance over the epoch length gives combined cost $\Otil(\rhobind^{1/3}\Slots^{2/3})$ (Theorem~\ref{thm:frontier}).
+\item A \textbf{binding-frequency invariance lemma}: the binding frequency $\rhobind$ is fixed by admission-control load and is asymptotically independent of the epoch length, which is what makes it a second, freely tunable axis (Lemma~\ref{lem:invariance}).
+\end{itemize}
+
+The distinguishing feature of our characterization is its second lever. Prior analyses of learning under truthfulness expose a single knob, the update granularity, and a single barrier: freezing the policy for longer suppresses manipulation but slows learning, yielding a worst-case combined cost of order $\Slots^{2/3}$~\cite{ref:dai,ref:dekel}. We show that under hard floors the manipulation cost is not a function of update granularity alone; it is gated by how often a floor binds, and that frequency is exogenous, set by admission-control load rather than by the learning horizon. The achievable region is therefore a surface in two parameters, and in the underloaded regime O-RAN targets it lies strictly inside the single-lever barrier.
+
+\textbf{Relation to closest prior art.} Dai, Golrezaei and Jaillet~\cite{ref:dai} independently propose epoch-based lazy updates for incentive-aware allocation under long-term cost constraints, attaining $\Otil(\sqrt{\Slots})$ welfare regret with a near-truthful equilibrium; their model is an abstract single-resource setting with no networking content, their learner is primal-dual rather than RL, and their guarantee is approximate truthfulness in equilibrium rather than exact within-epoch dominance. Huh and Kandasamy~\cite{ref:huh} establish that single-round IC need not imply truthfulness across rounds against non-myopic agents. We retain exact within-epoch DSIC with a learned allocator, localize the residual obstruction to the active-constraint wedge, and parametrize the resulting frontier by a measurable physical quantity, instantiated in a 3GPP-compliant RAN simulator.
+
+\section{Related Work}\label{sec:related}
+\textbf{Dynamic mechanism design and learning.} The dynamic pivot~\cite{ref:bergemann} and virtual-pivot~\cite{ref:kakade} mechanisms achieve periodic ex-post incentive compatibility for efficient and revenue-optimal dynamic allocation respectively. A recent line learns such mechanisms online, recovering dynamic VCG with welfare and truthfulness regret. Closest to us, \cite{ref:dai} freezes dual variables within epochs to suppress manipulation, hitting $\Otil(\sqrt{\Slots})$ welfare regret with a one-directional $\Omega(\Slots^{2/3})$ learning barrier under switching costs~\cite{ref:dekel}. We differ in three ways: we keep \emph{exact} within-epoch DSIC under a deep-RL allocator, we expose a \emph{second} lever (binding frequency), and we instantiate the result in a RAN system.
+
+\textbf{Auctions and incentives for slicing.} Truthful, mostly static, VCG-style auctions exist for RAN, spectrum, and slice allocation, and network-slicing games model tenants as strategic via share-constrained allocation~\cite{ref:slicinggames}. None couples a hard-floor-constrained \emph{learning} allocator with truthfulness guarantees.
+
+\textbf{RL for O-RAN slicing.} DRL and constrained multi-agent RL drive PRB and slice control in the RIC~\cite{ref:coloran,ref:slicing}, including safe-RL formulations enforcing SLA constraints. Across this literature the controller is assumed to observe true demand; tenants are never modeled as strategic agents with private types whose reports also train the allocator.
+
+\section{System Model}\label{sec:model}
+
+\subsection{Slots, epochs, tenants}
+Time is slotted, $t\in\{1,\dots,\Slots\}$, partitioned into $\Neps=\Slots/\Ep$ epochs of length $\Ep$. A set $[\Ntn]$ of tenants (slices) shares a cell of $B$ PRBs. Tenant $i$ holds a private scalar demand-intensity type $\type_i\in\typesp=[\underline{\type},\bar{\type}]$, drawn i.i.d.\ within an epoch from an epoch-stationary law (Assumption~\ref{ass:stat}).
+
+\subsection{Reports, allocation, valuations}
+At the start of epoch $k$ the mechanism fixes a weight vector $\wt_k\in\R_{\ge0}^{\Ntn}$, the output of the RL policy, held constant across the epoch. Each tenant submits a report $\hat\type_i$. Given $(\hat\type,\wt_k)$, a per-slot inner allocator returns a feasible split $\alloc_t\in\allocsp=\{\alloc\in\R_{\ge0}^{\Ntn}:\sum_i\alloc_i\le B\}$, with $g_i(\hat\type_i;\wt_k)$ the per-slot share assigned to $i$. Tenant $i$ derives per-slot value $\val_i(\alloc_{i,t};\type_i)$ and has quasi-linear utility $\val_i-p_i$ for payment $p_i$.
+
+\begin{assumption}[Single crossing]\label{ass:sc}
+$\val_i(\cdot;\cdot)$ is concave and increasing in the allocation and satisfies the Spence--Mirrlees condition $\partial^2\val_i/\partial\alloc_i\,\partial\type_i\ge0$.
+\end{assumption}
+
+\subsection{Service floors and the binding indicator}
+A subset of slots imposes a hard floor $\alloc_{i,t}\ge\flo_i$ for constrained tenants. Define the per-slot binding indicator
+\begin{equation}
+\bindind_t=\ind[\text{a floor is active and allocation-limited at slot }t],
+\end{equation}
+and the binding frequency $\rhobind=\tfrac{1}{\Slots}\,\E\sum_{t=1}^{\Slots}\bindind_t\in[0,1]$. Here ``allocation-limited'' means the floor, rather than the tenant's own demand, is the active constraint determining $\alloc_{i,t}$.
+
+\subsection{Epoch-frozen mechanism, learning, and payments}
+The weight $\wt_k$ depends only on data observed in epochs $<k$; the between-epoch update is any no-regret learner applied to per-epoch aggregate statistics. Two consequences are used throughout. First, within an epoch the allocation rule is a fixed function of reports. Second, because $\wt_{k+1}$ is computed from the empirical statistics of the $\Ep$ slots of epoch $k$, any single tenant's marginal influence on $\wt_{k+1}$ is diluted by the epoch size.
+
+\begin{assumption}[Monotone inner allocator]\label{ass:mono}
+For fixed $\wt_k$, $g_i(\hat\type_i;\wt_k)$ is nondecreasing in $\hat\type_i$, pointwise per slot, and continuous in $\wt_k$, with ties broken to preserve continuity.
+\end{assumption}
+
+\begin{assumption}[Bounded marginal influence]\label{ass:infl}
+The between-epoch map satisfies $\lVert\partial\wt_{k+1}/\partial\hat\type_{i,k}\rVert=O(1/\Ep)$, where $\hat\type_{i,k}$ is tenant $i$'s report in epoch $k$.
+\end{assumption}
+
+\begin{assumption}[Epoch stationarity and exogenous load]\label{ass:stat}
+Within each epoch the arrival process is stationary and ergodic, and the offered load factor $\load<1$ is set by admission control, not by the learned weights $\wt_k$.
+\end{assumption}
+
+Payments use the Myerson critical value of the frozen per-epoch allocation rule:
+\begin{equation}\label{eq:payment}
+p_i(\hat\type_i)=\hat\type_i\,a_i(\hat\type_i)-\int_{\underline{\type}}^{\hat\type_i} a_i(z)\,dz,
+\end{equation}
+where $a_i(\hat\type_i)=\sum_{t\in\text{epoch}}g_i(\hat\type_i;\wt_k)$ is the epoch-aggregate allocation to $i$.
+
+\section{Within-Epoch Truthfulness}\label{sec:dsic}
+
+\begin{theorem}[Within-epoch exact DSIC]\label{thm:dsic}
+Under Assumptions~\ref{ass:sc} and \ref{ass:mono}, with payments \eqref{eq:payment}, truthful reporting is a dominant strategy for every tenant within each epoch.
+\end{theorem}
+
+\begin{proof}
+Fix epoch $k$. By construction $\wt_k$ is independent of the reports submitted in epoch $k$, so within the epoch the environment is a static single-parameter mechanism with allocation rule $a_i(\cdot)$ and payment \eqref{eq:payment}. Assumption~\ref{ass:mono} makes each per-slot rule $g_i(\cdot;\wt_k)$ nondecreasing in $\hat\type_i$, and a sum of nondecreasing functions is nondecreasing, so $a_i$ is monotone. Under the Spence--Mirrlees condition (Assumption~\ref{ass:sc}), monotonicity of the allocation together with the threshold payment \eqref{eq:payment} is necessary and sufficient for dominant-strategy truthfulness in a single-parameter domain~\cite{ref:myerson}. Payments and values are additive across the slots of the epoch and $\wt_k$ is fixed, so the per-slot guarantees aggregate to the epoch. Hence truthful reporting maximizes $\val_i(a_i(\hat\type_i);\type_i)-p_i(\hat\type_i)$ for every $\type_{-i}$.
+\end{proof}
+
+\begin{remark}
+Theorem~\ref{thm:dsic} lets the remainder of the paper speak only of \emph{cross}-epoch slack: within an epoch there is none. The single load-bearing requirement is pointwise monotonicity of the inner allocator (Assumption~\ref{ass:mono}), which the weighted-greedy allocator of Section~\ref{sec:eval} satisfies by construction.
+\end{remark}
+
+\section{The Cost of Learning Under Hard Floors}\label{sec:imposs}
+
+We now show that the only way to game the mechanism is across epochs, and that the resulting slack lives entirely on binding slots.
+
+\begin{theorem}[Localized dynamic-IC impossibility]\label{thm:imposs}
+Suppose the between-epoch update is nontrivial, i.e.\ $\partial\wt_{k+1}/\partial\hat\type_{i,k}\neq0$. If $\rhobind>0$ the mechanism is not exactly dynamic-IC across the episode. Moreover the per-tenant dynamic-IC slack satisfies
+\begin{equation}\label{eq:slacklocal}
+\Slack_i=\Theta\!\Big(\E\sum_{t}\bindind_t\,\mu_{i,t}\Big),
+\end{equation}
+where $\mu_{i,t}$ is the shadow price of the floor at slot $t$; the slack is supported on binding slots, and $\Slack_i=0$ whenever $\rhobind=0$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+By Theorem~\ref{thm:dsic} no within-epoch deviation is profitable, so the only manipulation channel is the effect of a current report on future weights. Consider a one-shot deviation by tenant $i$ in epoch $k$ and decompose its first-order effect on $i$'s future utility into a component aligned with the welfare objective the learner ascends and a residual ``wedge''. On non-binding slots the realized allocation is interior, the per-epoch program is locally smooth, and the envelope theorem cancels the welfare-aligned component: at an interior constrained optimum, marginal values are equalized up to the budget multiplier and the tenant's wedge vanishes. On binding slots the floor is active, the allocation sits at a kink, and the envelope identity fails, leaving a residual equal to the floor's shadow price $\mu_{i,t}$. Summing gives \eqref{eq:slacklocal}; with $\rhobind=0$ there are no binding slots and the residual is identically zero. The full argument, including the differentiability conditions supplied by Assumption~\ref{ass:mono}, is in Appendix~\ref{app:imposs}.
+\end{proof}
+
+\begin{remark}[Distinction from constrained-efficiency impossibility]
+Classical results assert that constrained-efficient mechanisms are not incentive compatible. Theorem~\ref{thm:imposs} instead \emph{localizes} the obstruction to the active-constraint wedge and shows it is null when floors never bind. This localization, not the bare impossibility, is what enables the two-parameter frontier below.
+\end{remark}
+
+\section{The Incentive--Learning Frontier}\label{sec:frontier}
+
+\begin{theorem}[Two-parameter frontier]\label{thm:frontier}
+The epoch-frozen mechanism satisfies simultaneously
+\begin{align}
+\Reg(\Slots)&=\Otil\!\big(\sqrt{\Ep\,\Slots}\big),\label{eq:reg}\\
+\Slack(\Slots)&=O\!\big(\rhobind\,\Slots/\Ep\big),\label{eq:slack}
+\end{align}
+and, within the class of epoch-frozen mechanisms with a monotone inner allocator, these are jointly tight up to logarithmic factors. Balancing \eqref{eq:reg} and \eqref{eq:slack} over the epoch length yields the optimum
+\begin{equation}\label{eq:opt}
+\Ep^\star=\Theta\!\big(\rhobind^{2/3}\Slots^{1/3}\big),\qquad
+\Reg+\Slack=\Otil\!\big(\rhobind^{1/3}\Slots^{2/3}\big).
+\end{equation}
+At $\rhobind=1$ this recovers the $\Slots^{2/3}$ barrier; for $\rhobind<1$ it is strictly smaller by a factor $\rhobind^{1/3}$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+\emph{Regret \eqref{eq:reg}.} The policy changes only $\Neps=\Slots/\Ep$ times. Treating each epoch as one round of a no-regret learner whose per-round loss ranges over $[0,\Ep]$, online gradient descent attains meta-regret $\Otil(\Ep\sqrt{\Neps})=\Otil(\sqrt{\Ep\,\Slots})$ in cumulative slot units.
+\emph{Slack \eqref{eq:slack}.} A manipulation in epoch $k$ perturbs $\wt_{k+1}$ by $O(1/\Ep)$ (Assumption~\ref{ass:infl}) and, by Theorem~\ref{thm:imposs}, yields a gain only on the $\rhobind$-fraction of the next epoch's $\Ep$ slots that bind; the per-epoch gain is therefore $O((1/\Ep)\cdot\rhobind\Ep)=O(\rhobind)$, and summing over $\Neps=\Slots/\Ep$ epochs gives $O(\rhobind\,\Slots/\Ep)$.
+\emph{Balance.} Setting \eqref{eq:reg} equal to \eqref{eq:slack} gives \eqref{eq:opt}.
+\emph{Tightness.} The lower bound is stated for the stated mechanism class only and adapts the switching-cost construction of~\cite{ref:dekel}; at $\rhobind=1$ it yields $\Omega(\Slots^{2/3})$. Details in Appendix~\ref{app:frontier}.
+\end{proof}
+
+\begin{lemma}[Binding-frequency invariance]\label{lem:invariance}
+Under Assumption~\ref{ass:stat}, $\rhobind(\Ep,\load)=\rhobind^\star(\load)+O(1/\Ep)$; the binding frequency depends on the load factor alone and is asymptotically independent of the epoch length.
+\end{lemma}
+
+\begin{proof}[Proof sketch]
+Within an epoch $\wt_k$ is frozen, so the allocation is a stationary ergodic map of the stationary arrival process (Assumption~\ref{ass:stat}). By the ergodic theorem the long-run fraction of allocation-limited binding slots converges to a value $\rhobind^\star(\load)$ determined by the load factor and floor levels, with an $O(1/\Ep)$ transient contributed by the single per-epoch weight change. Full argument in Appendix~\ref{app:invariance}.
+\end{proof}
+
+\begin{remark}[Why the frontier is more than one operating point]
+Lemma~\ref{lem:invariance} is what makes \eqref{eq:slack} a genuine second axis: varying $\Ep$ moves slack through $\Slots/\Ep$ without moving $\rhobind$, so the underloaded regime $\rhobind^\star(\load)\ll1$ is reachable independently of the learning rate. If, instead, $\rhobind$ rose with $\Ep$, the second lever would be illusory and \eqref{eq:opt} would collapse to the single-lever barrier. The evaluation is designed to test exactly this independence.
+\end{remark}
+
+\section{Evaluation}\label{sec:eval}
+% NOTE TO AUTHORS: numbers below are to be populated from the 5G-LENA runs.
+% The methodology and the three hypotheses are fixed; fill Fig.~1 and the result paragraph.
+
+\subsection{Setup}
+We instantiate the system in the ns-3 5G-LENA NR module~\cite{ref:5glena} with an ns3-ai bridge~\cite{ref:ns3ai} to a Stable-Baselines3 PPO agent~\cite{ref:sb3}. gNBs (radio heads) and UEs are placed at random positions; the core is configured through the NR point-to-point EPC helper; UEs are partitioned into tenant groups carrying UDP/TCP loads. The RL scheduler subclasses an OFDMA NR MAC scheduler and overrides per-slot RBG assignment, receiving per-tenant weights from the agent and applying a weighted-greedy inner allocator that first satisfies hard floors and then distributes the remaining RBGs in weight order; this allocator is monotone in the weight by construction, satisfying Assumption~\ref{ass:mono}. FlowMonitor provides per-tenant throughput and delay. The binding frequency $\hat\rhobind$ is measured per slot as the fraction of slots on which a floor-constrained UE is allocation-limited.
+
+\subsection{Protocol}
+We sweep the epoch length $\Ep$ and the admission-control load $\load$ (which controls $\rhobind$). For each $(\Ep,\load)$ we run a truthful baseline and an adversarial tenant that learns, by tabular Q-learning over report perturbations, the most profitable cross-epoch misreport; the measured slack is the adversary's realized utility under its best misreport minus its utility under truthful reporting. Baselines are proportional-fair allocation, a single-lever variant with floors forced always active ($\rhobind\!=\!1$), and a non-strategic RL upper bound.
+
+\subsection{Hypotheses and results}
+The evaluation tests three predictions. \textbf{(H1)} measured slack scales as $O(\rhobind\,\Slots/\Ep)$, decreasing in $\Ep$ and proportional to $\rhobind$. \textbf{(H2)} measured $\hat\rhobind$ is flat in $\Ep$ at fixed load, validating Lemma~\ref{lem:invariance}. \textbf{(H3)} for $\load$ giving $\rhobind<1$, the achieved (regret, slack) pair lies strictly inside the $\rhobind\!=\!1$ baseline, confirming \eqref{eq:opt}. Fig.~\ref{fig:frontier} reports slack versus $\Ep$ with one curve per $\rhobind$ and the $O(\rhobind\Slots/\Ep)$ prediction overlaid; the inset reports $\hat\rhobind$ versus $\Ep$.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.92\columnwidth}{\centering\vspace{2.2cm}\textit{Fig.~stub (populate from runs):} measured IC slack vs epoch length $\Ep$, one curve per load $\load$ (per $\rhobind$), with the $O(\rhobind\Slots/\Ep)$ prediction overlaid; inset: $\hat\rhobind$ vs $\Ep$, expected flat, validating Lemma~\ref{lem:invariance}.\vspace{2.2cm}}}
+\caption{The incentive--learning frontier, measured in 5G-LENA.}
+\label{fig:frontier}
+\end{figure}
+
+\section{Limitations}\label{sec:limits}
+The private type is scalar and single-crossing; a Bayesian estimator of the demand-generating distribution and a $(\min,+)$ service-curve generalization of the valuation are natural extensions deferred to a journal version. The lower bound in Theorem~\ref{thm:frontier} is stated for the epoch-frozen monotone-allocator class rather than universally. Validation is in a 3GPP-compliant simulator rather than a hardware testbed.
+
+\section{Conclusion}\label{sec:concl}
+We showed that learning a truthful PRB allocator under hard service floors faces an incentive--learning tradeoff governed by two parameters, the epoch length and the service-floor binding frequency, the latter being an exogenous, measurable quantity. The resulting frontier is strictly better than the known single-lever barrier in the underloaded regime O-RAN targets, and is instantiated in 5G-LENA.
+
+\section*{Acknowledgment}
+The authors thank colleagues at the LAN Lab, IIT Kharagpur.
+
+\appendices
+
+\section{Full proof of Theorem~\ref{thm:imposs}}\label{app:imposs}
+Let $u_i^{>k}(\hat\type_{i,k})$ denote tenant $i$'s cumulative utility over epochs $>k$ as a function of its epoch-$k$ report, with all else fixed and others truthful. Differentiating through the weight map,
+\[
+\frac{d u_i^{>k}}{d\hat\type_{i,k}}=\sum_{t>kL}\Big\langle\nabla_{\wt}\,u_{i,t},\ \frac{\partial\wt}{\partial\hat\type_{i,k}}\Big\rangle .
+\]
+Write the per-epoch allocation as the solution of the constrained program $\max_{\alloc\in\allocsp}\sum_j\wt_j\val_j(\alloc_j;\hat\type_j)$ s.t. $\alloc_{j}\ge\flo_j$ on constrained slots. The KKT conditions give, at slot $t$, $\wt_i\partial_{\alloc_i}\val_i=\lambda_t-\mu_{i,t}$, with $\lambda_t$ the PRB-budget multiplier and $\mu_{i,t}\ge0$ the floor multiplier, $\mu_{i,t}>0$ only when the floor binds. The gradient $\nabla_{\wt}u_{i,t}$ splits into a term proportional to $(\lambda_t-\wt_i\partial_{\alloc_i}\val_i)$, which the learner's welfare ascent already drives to zero in expectation at an interior optimum, and a residual proportional to $\mu_{i,t}$. On non-binding slots $\mu_{i,t}=0$ and, by Assumption~\ref{ass:mono} (continuity of $g$ in $\wt$), the remaining term is first-order zero by the envelope theorem. On binding slots the residual $\mu_{i,t}\,\partial\wt/\partial\hat\type_{i,k}$ survives. Taking expectations and summing yields \eqref{eq:slacklocal}; the supports coincide with $\{t:\bindind_t=1\}$, so $\rhobind=0\Rightarrow\Slack_i=0$. Non-triviality of $\partial\wt/\partial\hat\type_{i,k}$ and $\rhobind>0$ make the residual generically nonzero, establishing the failure of exact dynamic IC. \hfill$\blacksquare$
+
+\section{Full proof of Theorem~\ref{thm:frontier}}\label{app:frontier}
+\emph{Regret.} Index epochs $k=1,\dots,\Neps$. Define the per-epoch loss $\ell_k(\wt)=-\sum_{t\in\text{epoch }k}r_t(\wt)$, with per-slot reward $r_t\in[0,1]$, so $\ell_k$ has range $[0,\Ep]$ and $O(\Ep)$-bounded subgradients over the bounded weight domain. Online gradient descent over $\Neps$ rounds attains $\sum_k\ell_k(\wt_k)-\min_{\wt}\sum_k\ell_k(\wt)=O(\Ep\sqrt{\Neps})$. Substituting $\Neps=\Slots/\Ep$ gives $\Reg(\Slots)=\Otil(\Ep\sqrt{\Slots/\Ep})=\Otil(\sqrt{\Ep\Slots})$.
+
+\emph{Slack.} Fix tenant $i$. By Appendix~\ref{app:imposs} the per-epoch manipulation gain is $\sum_{t\in\text{epoch }k+1}\bindind_t\,\mu_{i,t}\,\langle\partial\wt/\partial\hat\type_{i,k},\cdot\rangle$. Assumption~\ref{ass:infl} bounds $\lVert\partial\wt/\partial\hat\type_{i,k}\rVert=O(1/\Ep)$; the expected number of binding slots in an epoch is $\rhobind\Ep$ and $\mu_{i,t}$ is uniformly bounded, so the per-epoch gain is $O(\rhobind\Ep\cdot1/\Ep)=O(\rhobind)$. Summing over $\Neps=\Slots/\Ep$ epochs gives $\Slack(\Slots)=O(\rhobind\Slots/\Ep)$.
+
+\emph{Balance and optimum.} Minimizing $\sqrt{\Ep\Slots}+\rhobind\Slots/\Ep$ over $\Ep$, the first-order condition $\tfrac12\sqrt{\Slots/\Ep}=\rhobind\Slots/\Ep^{2}$ gives $\Ep^{3/2}=\Theta(\rhobind\Slots^{1/2})$, hence $\Ep^\star=\Theta(\rhobind^{2/3}\Slots^{1/3})$ and objective value $\Otil(\rhobind^{1/3}\Slots^{2/3})$.
+
+\emph{Lower bound (class-restricted).} Within the epoch-frozen monotone-allocator class, an algorithm that updates $\Neps$ times incurs switching structure to which the $\Omega(\Slots^{2/3})$ bandit-switching lower bound of~\cite{ref:dekel} applies when every slot can bind ($\rhobind=1$); reducing the binding mass to a $\rhobind$-fraction scales the manipulable signal by $\rhobind$, matching the upper bound up to logarithmic factors. \hfill$\blacksquare$
+
+\section{Full proof of Lemma~\ref{lem:invariance}}\label{app:invariance}
+Within epoch $k$ the weight $\wt_k$ is constant, so the slot-indexed allocation process $\{\alloc_t\}_{t\in\text{epoch }k}$ is a deterministic measurable map of the stationary ergodic arrival process (Assumption~\ref{ass:stat}). The binding indicator $\bindind_t=\ind[\text{floor active and limiting}]$ is a fixed measurable functional of $(\alloc_t,\text{arrivals}_t)$, hence itself stationary ergodic within the epoch. By Birkhoff's ergodic theorem the within-epoch average $\tfrac1\Ep\sum_{t\in\text{epoch }k}\bindind_t\to\E[\bindind]=\rhobind^\star(\load)$ almost surely as $\Ep\to\infty$, where $\rhobind^\star(\load)$ is the stationary binding probability fixed by the load factor and floor levels and independent of $\Ep$. The single weight change at the epoch boundary perturbs the process over an $O(1)$-length transient, contributing an $O(1/\Ep)$ correction to the epoch average. Averaging over epochs preserves the bound, giving $\rhobind(\Ep,\load)=\rhobind^\star(\load)+O(1/\Ep)$. \hfill$\blacksquare$
+
+\begin{thebibliography}{00}
+\bibitem{ref:oran} M.~Polese \emph{et al.}, ``Understanding O-RAN: Architecture, interfaces, algorithms, security, and research challenges,'' \emph{IEEE Commun. Surveys Tuts.}, vol.~25, no.~2, pp.~1376--1411, 2023.
+\bibitem{ref:coloran} L.~Bonati \emph{et al.}, ``ColO-RAN: Developing machine learning-based xApps for open RAN closed-loop control on programmable experimental platforms,'' \emph{IEEE Trans. Mobile Comput.}, vol.~22, no.~10, 2023.
+\bibitem{ref:slicing} D.~Bega \emph{et al.}, ``Network slicing meets artificial intelligence: An AI-based framework for slice management,'' \emph{IEEE Commun. Mag.}, vol.~58, no.~6, pp.~32--38, 2020.
+\bibitem{ref:myerson} R.~B. Myerson, ``Optimal auction design,'' \emph{Math. Oper. Res.}, vol.~6, no.~1, pp.~58--73, 1981.
+\bibitem{ref:huh} J.~Huh and K.~Kandasamy, ``Nash incentive-compatible online mechanism learning via weakly differentially private online learning,'' in \emph{Proc. ICML}, 2024.
+\bibitem{ref:dai} Y.~Dai, N.~Golrezaei, and P.~Jaillet, ``Incentive-aware dynamic resource allocation under long-term cost constraints,'' arXiv:2507.09473, 2025.
+\bibitem{ref:dekel} O.~Dekel, J.~Ding, T.~Koren, and Y.~Peres, ``Bandits with switching costs: $T^{2/3}$ regret,'' in \emph{Proc. STOC}, 2014.
+\bibitem{ref:bergemann} D.~Bergemann and J.~V\"alim\"aki, ``The dynamic pivot mechanism,'' \emph{Econometrica}, vol.~78, no.~2, pp.~771--789, 2010.
+\bibitem{ref:kakade} S.~Kakade, I.~Lobel, and H.~Nazerzadeh, ``Optimal dynamic mechanism design and the virtual-pivot mechanism,'' \emph{Oper. Res.}, vol.~61, no.~4, pp.~837--854, 2013.
+\bibitem{ref:slicinggames} P.~Caballero \emph{et al.}, ``Network slicing games: Enabling customization in multi-tenant mobile networks,'' \emph{IEEE/ACM Trans. Netw.}, vol.~27, no.~2, pp.~662--675, 2019.
+\bibitem{ref:5glena} N.~Patriciello, S.~Lag\'en, B.~Bojovi\'c, and L.~Giupponi, ``An E2E simulator for 5G NR networks,'' \emph{Simul. Model. Pract. Theory}, vol.~96, 2019.
+\bibitem{ref:ns3ai} H.~Yin \emph{et al.}, ``ns3-ai: Fostering artificial intelligence algorithms for networking research,'' in \emph{Proc. ACM WNS3}, 2020.
+\bibitem{ref:sb3} A.~Raffin \emph{et al.}, ``Stable-Baselines3: Reliable reinforcement learning implementations,'' \emph{J. Mach. Learn. Res.}, vol.~22, no.~268, pp.~1--8, 2021.
+\bibitem{ref:netcalc} J.-Y. Le Boudec and P.~Thiran, \emph{Network Calculus}. Springer LNCS 2050, 2001.
+\end{thebibliography}
+
+\end{document}

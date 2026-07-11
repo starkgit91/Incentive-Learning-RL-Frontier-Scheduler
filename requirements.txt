@@ -1,0 +1,92 @@
+# Core Scientific Computing
+numpy
+scipy
+pandas
+
+# Visualization
+matplotlib
+seaborn
+plotly
+
+# Jupyter
+jupyterlab
+ipykernel
+notebook
+
+# Machine Learning
+scikit-learn
+xgboost
+lightgbm
+catboost
+
+# Deep Learning
+torch
+# torchvision
+# torchaudio
+
+# TensorFlow (optional if using PyTorch only)
+tensorflow
+
+# Reinforcement Learning
+gymnasium
+stable-baselines3
+shimmy
+
+# Environment Utilities
+pygame
+opencv-python
+
+# # Data Handling
+# h5py
+# pyarrow
+# openpyxl
+
+# Image Processing
+Pillow
+imageio
+
+# # Progress Bars
+# tqdm
+
+# # Configuration
+# pyyaml
+# python-dotenv
+
+# # Experiment Tracking
+# tensorboard
+# wandb
+
+# # Hyperparameter Optimization
+# optuna
+
+# # Utilities
+# requests
+# joblib
+# psutil
+
+# # Model Explainability
+# shap
+
+# # NLP
+# transformers
+# datasets
+# sentencepiece
+# tokenizers
+
+# # Computer Vision
+# albumentations
+# timm
+
+# # Graph ML
+# networkx
+
+# # Interactive Widgets
+# ipywidgets
+
+# # Code Quality
+# black
+# flake8
+# isort
+
+# # Testing
+# pytest
