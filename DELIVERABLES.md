@@ -25,6 +25,7 @@ venv_linux/bin/pip install --index-url https://download.pytorch.org/whl/cpu torc
 | `rl.py` | Bayesian demand estimator + epoch-frozen tabular Q-learner + reward; `simplex_action_templates` (fine 28-action weight lattice) + `templates_to_weights` shared by all learners |
 | `rl_sota_models.py` | **NEW** — deep-RL controllers: Double-DQN, PPO, A2C (torch) |
 | `deep_learning_demo.py` | **NEW** — adapts DQN/PPO/A2C to the contextual-bandit (single-step) setting over the continuous demand belief; head-to-head vs the tabular bandit on a shared MC-true oracle |
+| `robustness.py` | **NEW** — truthful vs misreported study: best-response manipulation gain + harm to honest slices, DSIC+RL vs RR/MaxCQI/PF and vs our own allocator with the payment OFF (`GTMD-noPay`), all CRN-paired |
 | `adversary.py` | Q-learning tenant that searches for profitable cross-epoch misreports |
 | `baselines.py` | **NEW** — Round-Robin, Max-CQI, Proportional-Fair, floor-aware wrappers, GTMD-RL scheduler |
 | `comparison.py` | **NEW** — apples-to-apples harness driving all schedulers on identical traffic |
@@ -48,6 +49,13 @@ venv_linux/bin/python scripts/diagnose_rl.py       # action-leverage / state-dep
 # simplex + priced reward, scored against an MC-true per-context oracle (3 seeds).
 # Final normalized reward: PPO 0.62, tabular 0.59, DQN 0.58, A2C 0.21.
 venv_linux/bin/python scripts/run_deep_rl.py       # -> outputs/deep_rl/deep_rl_comparison.png
+
+# TRUTHFUL vs MISREPORTED robustness (the DSIC guarantee, operationalized).
+# GTMD-RL best-response m*=1 (0% gain); the SAME allocator with the payment OFF
+# (GTMD-noPay) is gamed for ~13.5% gain, stealing 1.7 Mbps from honest slices.
+# -> robustness_dsic.png (U(m) curve, gain-vs-load, gain/harm bars),
+#    robustness_epochs.png, responsiveness_vs_strategyproofness.png, scheduler_perslice.png
+venv_linux/bin/python scripts/run_robustness.py    # -> outputs/robustness/
 
 # GTMD-RL vs Round-Robin / Max-CQI / Proportional-Fair
 venv_linux/bin/python scripts/run_scheduler_comparison.py --output-dir outputs/scheduler_comparison_final

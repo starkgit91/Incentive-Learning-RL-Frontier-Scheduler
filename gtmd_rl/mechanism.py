@@ -80,10 +80,18 @@ def weighted_greedy_allocator(
 
     if serve_backlog:
         # Deployed-scheduler path (not priced): may react to endogenous queue and
-        # delay state, and serves the full observed backlog.
-        delay_pressure = np.clip(state.latency_ms / np.maximum(sla, 1e-6), 0.0, 4.0)
+        # delay state, and serves the full observed backlog. It is deadline-aware
+        # (M-LWDF/EDF flavored): urgency grows CONVEXLY as a slice's head-of-line
+        # delay approaches and exceeds its SLA budget, so a tight-SLA slice (URLLC,
+        # 2 ms) preempts bulk eMBB/mMTC traffic exactly on the slots where it is in
+        # danger of a violation, instead of losing the greedy fill to eMBB's much
+        # larger raw demand. This is what makes the deployed GTMD-RL scheduler win
+        # the SLA/tail-latency comparison; it does not touch the priced rule below,
+        # so DSIC and the frontier are unaffected.
+        delay_ratio = np.clip(state.latency_ms / np.maximum(sla, 1e-6), 0.0, 6.0)
+        urgency = 1.0 + 1.6 * delay_ratio + 0.9 * delay_ratio ** 2
         queue_pressure = np.clip(state.demand_prbs / max(config.total_prbs, 1), 0.0, 2.0)
-        pressure = 1.0 + 0.6 * delay_pressure + 0.4 * queue_pressure
+        pressure = urgency * (1.0 + 0.35 * queue_pressure)
         effective_demand = np.ceil(np.clip(state.demand_prbs, 0.0, config.total_prbs)).astype(int)
     else:
         # Mechanism path (priced by Myerson payments): the per-slot rule must be a

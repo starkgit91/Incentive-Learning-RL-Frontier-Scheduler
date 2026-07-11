@@ -539,7 +539,7 @@ def plot_frontier_v2(df: pd.DataFrame, output_dir: Path) -> list[Path]:
     # ~0.2% residual reads honestly as near-zero, where raw utility units looked
     # like a large, jumpy number.
     slack_col = ("ic_slack_pct", "slack_pct_std") if has_pct else ("ic_slack", "slack_std")
-    slack_ylab = ("best-response IC slack (\\% of truthful utility)" if has_pct
+    slack_ylab = ("best-response IC slack (% of truthful utility)" if has_pct
                   else "measured IC slack (best response)")
     paths = [path]
     for cols, name, ylab, title in [
