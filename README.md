@@ -1,4 +1,4 @@
-# MTP-Droy: Complete DSIC + RL Implementation for 5G Resource Allocation
+# Complete DSIC + RL Implementation for 5G Resource Allocation
 
 **Thesis**: Dynamic and Efficient Resource Allocation in 5G NR for Different Network Slices  
 **Approach**: Game Theory (DSIC Mechanism) + Reinforcement Learning  
